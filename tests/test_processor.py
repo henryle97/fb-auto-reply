@@ -126,3 +126,18 @@ async def test_cancelled_is_recorded(make_processor):
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
     assert (await store.recent())[0]["status"] == "cancelled"
+
+
+def test_ai_output_checks():
+    import pytest
+
+    from fb_auto_reply.ai import check_reply
+
+    hosts = {"example.com"}
+    assert check_reply("See https://example.com/pricing", 500, hosts, "f") is not None
+    assert check_reply("Try www.example.com/x or example.com/y", 500, hosts, "f")
+    assert check_reply("Sign up at https://example.com.", 500, hosts, "f")
+    assert check_reply("  ", 500, hosts, "f") is None
+    for bad in ["Win at https://evil.test/x", "go to evil.test/login", "x" * 501]:
+        with pytest.raises(AIError):
+            check_reply(bad, 500, hosts, "f")

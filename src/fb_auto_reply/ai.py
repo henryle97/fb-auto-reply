@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import anthropic
 
@@ -53,8 +55,40 @@ OUTPUT_SCHEMA = {
 }
 
 
+# Hard limits on what the bot will post, whatever the model returns.
+MAX_PUBLIC_CHARS = 500
+MAX_PRIVATE_CHARS = 2000
+_URL = re.compile(
+    r"(?:https?://|www\.)[^\s<>()\"']+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/\S*", re.I
+)
+
+
 class AIError(Exception):
     """Calling Claude failed (as opposed to the model deciding not to reply)."""
+
+
+def _host(url: str) -> str:
+    url = url.rstrip(".,!?;:")
+    if not re.match(r"https?://", url, re.I):
+        url = "http://" + url
+    return (urlsplit(url).hostname or "").lower().removeprefix("www.")
+
+
+def check_reply(text: str | None, limit: int, allowed_hosts: set[str], field: str) -> str | None:
+    """Reject AI output that is too long or links anywhere product_info does not mention.
+
+    The comment is untrusted input, so a successful prompt injection must not be able to
+    make the Page post arbitrary links or long text in public.
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+    if len(text) > limit:
+        raise AIError(f"AI {field} too long ({len(text)} > {limit} chars), not posted")
+    for url in _URL.findall(text):
+        if _host(url) not in allowed_hosts:
+            raise AIError(f"AI {field} links to {_host(url)!r}, not in product info, not posted")
+    return text
 
 
 class ClaudeResponder:
@@ -72,10 +106,12 @@ class ClaudeResponder:
         if self._client is not None:
             await self._client.close()
 
-    def system_prompt(self) -> str:
+    def product_info(self) -> str:
         path = Path(self.settings.product_info_path)
-        info = path.read_text(encoding="utf-8") if path.exists() else "(no product information)"
-        return SYSTEM_TEMPLATE.format(product_info=info)
+        return path.read_text(encoding="utf-8") if path.exists() else "(no product information)"
+
+    def system_prompt(self) -> str:
+        return SYSTEM_TEMPLATE.format(product_info=self.product_info())
 
     async def __call__(self, comment: str, name: str = "", post_text: str = "") -> Reply | None:
         """Return a Reply, None if the model chose not to reply, or raise AIError."""
@@ -125,8 +161,11 @@ class ClaudeResponder:
 
         if not data.get("should_reply"):
             return None
+        hosts = {_host(u) for u in _URL.findall(self.product_info())}
         return Reply(
-            public=data.get("public_reply") or None,
-            private=data.get("private_message") or None,
+            public=check_reply(data.get("public_reply"), MAX_PUBLIC_CHARS, hosts, "public_reply"),
+            private=check_reply(
+                data.get("private_message"), MAX_PRIVATE_CHARS, hosts, "private_message"
+            ),
             source="ai",
         )
