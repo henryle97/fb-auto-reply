@@ -59,8 +59,10 @@ OUTPUT_SCHEMA = {
 MAX_PUBLIC_CHARS = 500
 MAX_PRIVATE_CHARS = 2000
 # Full URLs, plus bare domains with or without a path ("evil.test", "evil.test/x").
+# Labels and TLDs accept any Unicode letters so internationalized domains are caught too.
 _URL = re.compile(
-    r"(?:https?://|www\.)[^\s<>()\"']+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b(?:[/?#]\S*)?", re.I
+    r"(?:https?://|www\.)[^\s<>()\"']+|(?<![\w.-])(?:[\w-]+\.)+[^\W\d_][\w-]+(?:[/?#:]\S*)?",
+    re.I,
 )
 # Domain-shaped tokens that are really file names ("lesson.html").
 _FILE_SUFFIXES = {"html", "htm", "pdf", "png", "jpg", "jpeg", "gif", "txt", "md", "csv", "zip"}
@@ -70,11 +72,21 @@ class AIError(Exception):
     """Calling Claude failed (as opposed to the model deciding not to reply)."""
 
 
-def _host(url: str) -> str:
+def _host(url: str) -> str | None:
+    """Lowercased host, or None when the authority is ambiguous between parsers.
+
+    Browsers treat "\\" like "/" and "@" as a userinfo separator, so URLs such as
+    "https://evil.test\\@good.example" can resolve to a different host than urlsplit
+    reports. Anything beyond a plain host[:port] is rejected.
+    """
     url = url.rstrip(".,!?;:")
     if not re.match(r"https?://", url, re.I):
         url = "http://" + url
-    return (urlsplit(url).hostname or "").lower().removeprefix("www.")
+    authority = re.split(r"[/?#]", url.split("://", 1)[1], maxsplit=1)[0]
+    if re.search(r"[@\\%\s\x00-\x1f\x7f]", authority):
+        return None
+    host = (urlsplit(url).hostname or "").lower().removeprefix("www.")
+    return host or None
 
 
 def check_reply(text: str | None, limit: int, allowed_hosts: set[str], field: str) -> str | None:
@@ -90,6 +102,8 @@ def check_reply(text: str | None, limit: int, allowed_hosts: set[str], field: st
         raise AIError(f"AI {field} too long ({len(text)} > {limit} chars), not posted")
     for url in _URL.findall(text):
         host = _host(url)
+        if host is None:
+            raise AIError(f"AI {field} contains an ambiguous URL {url[:80]!r}, not posted")
         is_file = "/" not in url and host.rsplit(".", 1)[-1] in _FILE_SUFFIXES
         if host not in allowed_hosts and not is_file:
             raise AIError(f"AI {field} links to {host!r}, not in product info, not posted")
@@ -166,7 +180,7 @@ class ClaudeResponder:
 
         if not data.get("should_reply"):
             return None
-        hosts = {_host(u) for u in _URL.findall(self.product_info())}
+        hosts = {h for u in _URL.findall(self.product_info()) if (h := _host(u))}
         return Reply(
             public=check_reply(data.get("public_reply"), MAX_PUBLIC_CHARS, hosts, "public_reply"),
             private=check_reply(

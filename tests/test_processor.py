@@ -144,6 +144,11 @@ def test_ai_output_checks():
         "go to evil.test/login",
         "visit evil.test now",
         "see sub.evil.test.",
+        "https://evil.test\\@example.com/x",
+        "https://example.com@evil.test/",
+        "https://evil%2etest/",
+        "visit evil.xn--p1ai",
+        "visit пример.рф",
         "x" * 501,
     ]
     for bad in bad_replies:
