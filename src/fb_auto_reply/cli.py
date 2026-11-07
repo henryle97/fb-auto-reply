@@ -15,6 +15,7 @@ import httpx
 
 from .ai import AIError, ClaudeResponder
 from .config import Settings
+from .payloads import distinct, load, render
 from .rules import RuleSet
 
 REQUIRED_SCOPES = {
@@ -111,7 +112,13 @@ def main(argv: list[str] | None = None) -> int:
     p_ask = sub.add_parser("ask", help="preview the reply for a comment without posting")
     p_ask.add_argument("comment")
     p_ask.add_argument("--name", default="")
+    p_pl = sub.add_parser("payloads", help="anonymized example of each captured payload shape")
+    p_pl.add_argument("jsonl", help="file written via WEBHOOK_LOG_PATH")
     args = parser.parse_args(argv)
+
+    if args.command == "payloads":
+        print(render(distinct(load(args.jsonl))))
+        return 0
 
     settings = Settings.from_env()
     if args.command == "check":

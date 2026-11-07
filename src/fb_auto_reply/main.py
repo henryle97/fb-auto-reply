@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import hmac
+import json
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -34,6 +35,11 @@ def _configure_logging() -> None:
     # httpx logs full URLs at INFO, and Graph API calls carry the access token in the query.
     for name in ("httpx", "httpcore"):
         logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def _append_jsonl(path: str, record: dict[str, Any]) -> None:
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def create_app(
@@ -107,8 +113,11 @@ def create_app(
             raise HTTPException(401, "invalid signature")
 
         payload = await request.json()
-        recent_payloads.appendleft({"received_at": time.time(), "payload": payload})
+        received = {"received_at": time.time(), "payload": payload}
+        recent_payloads.appendleft(received)
         log.debug("Webhook payload: %s", body.decode(errors="replace")[:2000])
+        if settings.webhook_log_path:
+            await asyncio.to_thread(_append_jsonl, settings.webhook_log_path, received)
         for ev in extract_comment_events(payload, settings.page_id):
             # Answer 200 immediately (Facebook retries slow webhooks); reply in the background.
             task = asyncio.create_task(processor.handle(ev))

@@ -94,9 +94,16 @@ def link_candidates(text: str) -> list[tuple[str, str | None]]:
             if _SCHEME.match(token) is None and "." not in body:
                 continue
             authority = re.split(r"[/?#]", body, maxsplit=1)[0]
-            if "@" in authority and not _SCHEME.match(token) and authority.count("@") == 1:
-                authority = authority.split("@", 1)[1]  # an email address: check its domain
-                ambiguous = False
+            local, _, domain = authority.partition("@")
+            is_email = (
+                not _SCHEME.match(token)
+                and authority.count("@") == 1
+                and re.fullmatch(r"[A-Za-z0-9._+-]+", local) is not None
+            )
+            if is_email:
+                # Check the domain; a domain-shaped local part ("evil.test@x") is checked too.
+                found.extend(link_candidates(local))
+                authority, ambiguous = domain, False
             else:
                 ambiguous = bool(re.search(r"[@\\%\x00-\x1f\x7f]", authority))
             host = authority.rsplit(":", 1)[0] if ":" in authority else authority

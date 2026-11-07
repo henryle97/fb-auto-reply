@@ -73,6 +73,8 @@ class Settings:
     supabase_url: str = field(default_factory=lambda: _env("SUPABASE_URL"))
     supabase_key: str = field(default_factory=lambda: _env("SUPABASE_SERVICE_KEY"))
     sqlite_path: str = field(default_factory=lambda: _env("SQLITE_PATH", "data.db"))
+    # Optional: append every raw webhook payload to this JSONL file (contains personal data).
+    webhook_log_path: str = field(default_factory=lambda: _env("WEBHOOK_LOG_PATH"))
 
     # Content
     rules_path: str = field(

@@ -128,6 +128,8 @@ returns 403.
 
 ### Events: `POST /webhook`
 
+Full schema and every captured payload: [webhook-payloads.md](webhook-payloads.md).
+
 Every event is signed with the app secret:
 
 ```

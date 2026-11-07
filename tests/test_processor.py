@@ -157,6 +157,9 @@ def test_ai_output_checks():
         "evil\N{FULLWIDTH FULL STOP}test/x",
         "visit cafe\u0301.te\u0301st",
         "mail me@evil.test",
+        "evil.test@example.com",
+        "evil.test:x@example.com",
+        "a%2fb@example.com",
         "visit пример.рф",
         "x" * 501,
     ]
