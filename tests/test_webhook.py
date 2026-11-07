@@ -65,3 +65,21 @@ def test_posts_endpoints(settings):
         assert client.get("/posts/find", params={"ref": "9"}, headers=headers).status_code == 404
         bad = client.get("/posts/find", params={"ref": "hello"}, headers=headers)
         assert bad.status_code == 400
+
+
+def test_signed_but_unusable_bodies_are_acknowledged(settings):
+    # A non-200 makes Facebook retry for hours and eventually unsubscribe the app.
+    bodies = [
+        b"not json",
+        b"[]",
+        b"{}",
+        json.dumps({"object": "page", "entry": "oops"}).encode(),
+        json.dumps(
+            {"object": "page", "entry": [{"changes": [{"field": "feed", "value": 1}]}]}
+        ).encode(),
+        json.dumps({"object": "page", "entry": [{"changes": [{"field": "messages"}]}]}).encode(),
+    ]
+    with make_client(settings) as client:
+        for body in bodies:
+            r = client.post("/webhook", content=body, headers={"X-Hub-Signature-256": sign(body)})
+            assert (r.status_code, r.json()) == (200, {"ok": True}), body

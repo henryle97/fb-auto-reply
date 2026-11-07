@@ -89,8 +89,11 @@ Facebook delivers Page events here. Body: the `feed` payload described in
 
 | Status | Body | When |
 |---|---|---|
-| 200 | `{"ok": true}` | Valid signature. Returned immediately, before replying |
+| 200 | `{"ok": true}` | Valid signature. Returned immediately, before replying. Also for signed bodies that are not JSON objects or have an unexpected shape (logged and ignored, so Facebook does not retry them) |
 | 401 | `{"detail": "invalid signature"}` | Signature missing, malformed or wrong, or `FB_APP_SECRET` empty |
+
+Facebook's retry and unsubscribe rules: [facebook-api.md → Delivery, retries and
+failures](facebook-api.md#delivery-retries-and-failures).
 
 What happens after the 200, for each new comment from a person (see
 [facebook-api.md → What the bot acts on](facebook-api.md#what-the-bot-acts-on)):

@@ -61,6 +61,30 @@ Notes from these captures:
   post id. The bot's replies are such thread replies.
 - **Deleting a comment** sends `verb: "remove"` with the same `comment_id` and no `message`.
 
+## Documented `feed` values (Meta reference, v27.0)
+
+Meta's `feed` reference lists these, without saying which fields go with which item. Only
+`item: comment` with `verb: add` / `remove` has been captured here.
+
+- `item`: `album`, `address`, `comment`, `connection`, `coupon`, `event`, `experience`,
+  `group`, `group_message`, `interest`, `link`, `mention`, `milestone`, `note`, `page`,
+  `picture`, `platform-story`, `photo`, `photo-album`, `post`, `profile`, `question`,
+  `rating`, `reaction`, `relationship-status`, `share`, `status`, `story`, `timeline cover`,
+  `tag`, `video`
+- `verb`: `add`, `block`, `edit`, `edited`, `delete`, `follow`, `hide`, `mute`, `remove`,
+  `unblock`, `unhide`, `update`
+- `value` fields (union over all items): `action`, `album_id`, `comment_id`, `created_time`,
+  `edited_time`, `event_id`, `feedback_target_id`, `from` (`id`, `name`), `is_hidden`,
+  `is_published`, `item`, `link`, `message`, `open_graph_story_id`, `parent_id`, `permalink_url`,
+  `photo`, `photo_id`, `photo_ids`, `photos`, `post` (object), `post_id`, `published`,
+  `reaction_type`, `recipient_id`, `share_id`, `status_type`, `story`, `title`, `updated_time`,
+  `verb`, `video`, `video_flag_reason`, `video_id`
+
+Notes from the same reference: no webhook for Ad Posts themselves (comments on them are
+sent); Page-like notifications only for Pages under 10K likes. Batches can hold up to 1000
+changes, so code must loop over every `entry` and `change` even though each capture here had
+one.
+
 ## Not captured yet
 
 These events have not reached this bot yet, so their shape is not documented here. They need

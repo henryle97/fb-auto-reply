@@ -112,13 +112,28 @@ def create_app(
         if not verify_signature(body, x_hub_signature_256, settings.app_secret):
             raise HTTPException(401, "invalid signature")
 
-        payload = await request.json()
+        # Anything that is signed but unusable is acknowledged with 200 and ignored: a non-200
+        # makes Facebook retry for up to 36 hours and unsubscribe the app after 1 hour of
+        # failures, and a retry of the same body would fail the same way.
+        try:
+            payload = json.loads(body)
+        except ValueError:
+            log.warning("Ignoring webhook with invalid JSON body: %r", body[:200])
+            return {"ok": True}
+        if not isinstance(payload, dict):
+            log.warning("Ignoring webhook whose body is not a JSON object")
+            return {"ok": True}
         received = {"received_at": time.time(), "payload": payload}
         recent_payloads.appendleft(received)
         log.debug("Webhook payload: %s", body.decode(errors="replace")[:2000])
         if settings.webhook_log_path:
             await asyncio.to_thread(_append_jsonl, settings.webhook_log_path, received)
-        for ev in extract_comment_events(payload, settings.page_id):
+        try:
+            events = extract_comment_events(payload, settings.page_id)
+        except (AttributeError, TypeError, KeyError):
+            log.warning("Ignoring webhook with an unexpected shape: %s", str(payload)[:500])
+            return {"ok": True}
+        for ev in events:
             # Answer 200 immediately (Facebook retries slow webhooks); reply in the background.
             task = asyncio.create_task(processor.handle(ev))
             tasks.add(task)
