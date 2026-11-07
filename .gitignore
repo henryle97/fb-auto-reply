@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Secrets and local data
+.env
+*.db
+*.db-journal
+logs/
+
+# Your page's real content (see examples/)
+rules.yaml
+product_info.md
+!tests/rules.yaml
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

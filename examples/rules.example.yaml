@@ -1,0 +1,70 @@
+# Keyword rules: instant replies that cost no API calls. Comments that match no rule go to the AI.
+# Copy to ./rules.yaml (gitignored) and edit. Reload a running server with POST /reload-rules.
+#
+# - Matching is case-insensitive and whole-word. A comment typed without accents ("precio")
+#   still matches an accented keyword, but an accented comment only matches accented keywords.
+# - The first matching rule wins, so put specific rules first.
+# - Replies follow the comment's language: write templates as {en: ..., es: ...}.
+#   A comment in a language the rule has no template for is passed to the AI instead.
+#   Use "*" for a template that applies to every language.
+# - Each language can be one string or a list (one is picked at random).
+# - {name} is replaced by the commenter's name (or the language's name_fallback).
+# - Omit private_reply to skip the Messenger message for that rule.
+
+# Language detection for picking templates. Each language scores one point per hint word and
+# per characteristic character in the comment; the highest score wins, ties go to
+# default_language. Mostly non-Latin text with no hits is treated as unknown (AI handles it).
+default_language: en
+languages:
+  en:
+    name_fallback: there
+    words: [the, is, are, how, what, can, i, you, it, price, free, does, do, this, for, my,
+            much, please, thanks, thank, where, when, link]
+  es:
+    name_fallback: amigo
+    chars: "ñ¿¡"
+    words: [el, la, los, las, es, que, como, cuanto, cuesta, precio, gratis, hola, gracias,
+            para, por, puedo, donde, quiero, enlace]
+
+rules:
+  - name: dm_request
+    keywords: [dm, inbox, dm me, message me, mensaje, info por privado]
+    public_reply:
+      en: "Hi {name}, we've just sent you a message. Please check your inbox!"
+      es: "¡Hola {name}! Te acabamos de enviar un mensaje, revisa tu bandeja de entrada."
+    private_reply:
+      en: "Hi {name}! How can we help? You can try it for free at https://example.com"
+      es: "¡Hola {name}! ¿En qué te podemos ayudar? Pruébalo gratis en https://example.com"
+
+  - name: pricing
+    keywords: [price, pricing, cost, how much, precio, cuánto cuesta, gratis]
+    public_reply:
+      en:
+        - "It's free to start, no credit card needed. Full pricing: https://example.com/pricing"
+        - "You can start for free, {name}. Pricing details: https://example.com/pricing"
+      es: "Puedes empezar gratis, sin tarjeta. Precios: https://example.com/pricing"
+    private_reply:
+      en: |
+        Hi {name}! The Free plan includes everything you need to get started.
+        Paid plans are listed at https://example.com/pricing
+      es: |
+        ¡Hola {name}! El plan gratuito incluye todo lo necesario para empezar.
+        Los planes de pago están en https://example.com/pricing
+
+  - name: signup
+    keywords: [link, sign up, signup, register, enlace, registrarme]
+    public_reply:
+      en: "Hi {name}, head to https://example.com to get started for free!"
+      es: "¡Hola {name}! Entra en https://example.com para empezar gratis."
+
+# Used only when AI_ENABLED=false and no rule matches.
+default:
+  public_reply:
+    en: "Thanks for your interest, {name}! We'll message you with details."
+    es: "¡Gracias por tu interés, {name}! Te escribimos por mensaje."
+  private_reply:
+    en: "Hi {name}! How can we help?"
+    es: "¡Hola {name}! ¿En qué te podemos ayudar?"
+
+# Comments containing any of these are ignored entirely (no reply, no AI call).
+ignore_keywords: [scam, estafa]
