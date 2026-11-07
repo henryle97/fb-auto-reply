@@ -15,18 +15,23 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-_ID_KEYS = {
-    "id",
-    "post_id",
-    "comment_id",
-    "parent_id",
-    "sender_id",
-    "recipient_id",
-    "photo_id",
-    "video_id",
-    "share_id",
+# Allowlist: only these string values are kept verbatim (enum-like or timestamps).
+# Every other string is replaced, so new or unexpected fields can never leak personal data.
+_KEEP_KEYS = {
+    "object",
+    "field",
+    "item",
+    "verb",
+    "status_type",
+    "promotion_status",
+    "reaction_type",
+    "published",
+    "is_hidden",
 }
-_TEXT_KEYS = {"message", "name", "permalink_url", "link", "photo", "description"}
+
+
+def _is_id_key(key: str) -> bool:
+    return key == "id" or key.endswith("_id")
 
 
 class Anonymizer:
@@ -34,6 +39,8 @@ class Anonymizer:
         self.ids: dict[str, str] = {}
 
     def _id(self, value: str) -> str:
+        if not re.fullmatch(r"\d+(?:_\d+)*", value):
+            return "<id>"
         # Keep the "<owner>_<object>" structure of composite ids.
         return "_".join(
             self.ids.setdefault(p, str(9 * 10**14 + len(self.ids) + 1)) for p in value.split("_")
@@ -44,11 +51,13 @@ class Anonymizer:
             return {k: self(v, k) for k, v in obj.items()}
         if isinstance(obj, list):
             return [self(v, key) for v in obj]
-        if isinstance(obj, str) and key in _ID_KEYS and re.fullmatch(r"[\d_]+", obj):
+        if not isinstance(obj, str):
+            return obj  # numbers, booleans, null
+        if _is_id_key(key):
             return self._id(obj)
-        if isinstance(obj, str) and key in _TEXT_KEYS:
-            return f"<{key}>"
-        return obj
+        if key in _KEEP_KEYS or key.endswith("_time"):
+            return obj
+        return f"<{key or 'value'}>"
 
 
 def shape(obj: Any) -> Any:

@@ -21,3 +21,26 @@ def test_distinct_anonymizes_and_dedupes(tmp_path):
     out = render(items)
     assert "secret text" not in out and "Jane" not in out and PAGE_ID not in out
     assert '"message": "<message>"' in out
+
+
+def test_unknown_string_fields_are_masked():
+    from fb_auto_reply.payloads import Anonymizer
+
+    out = Anonymizer()(
+        {
+            "item": "photo",
+            "verb": "add",
+            "photo_url": "https://cdn/x.jpg",
+            "sender_id": "abc",
+            "story": "Jane shared a photo",
+            "count": 3,
+        }
+    )
+    assert out == {
+        "item": "photo",
+        "verb": "add",
+        "photo_url": "<photo_url>",
+        "sender_id": "<id>",
+        "story": "<story>",
+        "count": 3,
+    }
