@@ -64,8 +64,9 @@ _URL = re.compile(
     r"(?:https?://|www\.)[^\s<>()\"']+|(?<![\w.-])(?:[\w-]+\.)+[^\W\d_][\w-]+(?:[/?#:]\S*)?",
     re.I,
 )
-# Domain-shaped tokens that are really file names ("lesson.html").
-_FILE_SUFFIXES = {"html", "htm", "pdf", "png", "jpg", "jpeg", "gif", "txt", "md", "csv", "zip"}
+# Domain-shaped tokens that are really file names ("lesson.html"). Only extensions that are
+# not delegated TLDs belong here (".zip", ".md", ".app" etc. are real TLDs).
+_FILE_SUFFIXES = {"html", "htm", "pdf", "png", "jpg", "jpeg", "gif", "txt", "csv"}
 
 
 class AIError(Exception):
@@ -104,7 +105,11 @@ def check_reply(text: str | None, limit: int, allowed_hosts: set[str], field: st
         host = _host(url)
         if host is None:
             raise AIError(f"AI {field} contains an ambiguous URL {url[:80]!r}, not posted")
-        is_file = "/" not in url and host.rsplit(".", 1)[-1] in _FILE_SUFFIXES
+        is_file = (
+            not re.match(r"(?:https?://|www\.)", url, re.I)
+            and not re.search(r"[/?#:]", url)
+            and host.rsplit(".", 1)[-1] in _FILE_SUFFIXES
+        )
         if host not in allowed_hosts and not is_file:
             raise AIError(f"AI {field} links to {host!r}, not in product info, not posted")
     return text

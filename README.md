@@ -154,6 +154,9 @@ curl -X POST -H "X-Admin-Token: $FB_VERIFY_TOKEN" https://<your-host>/reload-rul
 
 ## Endpoints
 
+See [docs/facebook-api.md](docs/facebook-api.md) for every Graph API call, webhook payload
+samples, field meanings and API versions.
+
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/` | — | Health check |

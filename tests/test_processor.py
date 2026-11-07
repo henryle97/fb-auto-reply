@@ -148,6 +148,8 @@ def test_ai_output_checks():
         "https://example.com@evil.test/",
         "https://evil%2etest/",
         "visit evil.xn--p1ai",
+        "get evil.zip or notes.md",
+        "www.lesson.html",
         "visit пример.рф",
         "x" * 501,
     ]
