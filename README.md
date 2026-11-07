@@ -20,7 +20,8 @@ For each new comment, the bot:
 3. Picks a reply: the first matching **keyword rule** in `rules.yaml`, otherwise **Claude**
    using `product_info.md`. Claude skips spam and comments that only tag friends.
 4. Waits a random 5–20 s, posts a **public reply** under the comment and sends a **private
-   reply** to the commenter's Messenger inbox.
+   reply** to the commenter's Messenger inbox. When Claude writes no inbox message (thanks,
+   compliments), the `default.private_reply` template from `rules.yaml` is sent instead.
 5. Records the outcome (`GET /logs`).
 
 ## Project layout
@@ -154,7 +155,8 @@ curl -X POST -H "X-Admin-Token: $FB_VERIFY_TOKEN" https://<your-host>/reload-rul
 
 ## Endpoints
 
-See [docs/facebook-api.md](docs/facebook-api.md) for every Graph API call and API versions, and
+See [docs/endpoints.md](docs/endpoints.md) for every endpoint's parameters, responses and errors,
+[docs/facebook-api.md](docs/facebook-api.md) for every Graph API call and API versions, and
 [docs/webhook-payloads.md](docs/webhook-payloads.md) for the webhook payloads captured live.
 
 | Method | Path | Auth | Purpose |
@@ -164,7 +166,15 @@ See [docs/facebook-api.md](docs/facebook-api.md) for every Graph API call and AP
 | `POST` | `/webhook` | `X-Hub-Signature-256` | Facebook webhook events |
 | `GET` | `/logs?limit=50` | `X-Admin-Token` | Recent comments and replies |
 | `POST` | `/reload-rules` | `X-Admin-Token` | Reload `rules.yaml` |
+| `GET` | `/posts?limit=10` | `X-Admin-Token` | The Page's last `limit` posts (max 100) |
+| `GET` | `/posts/find?ref=<id or url>` | `X-Admin-Token` | One post by id or `facebook.com` post URL |
 | `GET` | `/debug/payloads` | `X-Admin-Token` | Last 20 raw webhook payloads |
+
+```bash
+curl -H "X-Admin-Token: $FB_VERIFY_TOKEN" "https://<your-host>/posts?limit=5"
+curl -G -H "X-Admin-Token: $FB_VERIFY_TOKEN" https://<your-host>/posts/find \
+  --data-urlencode "ref=https://www.facebook.com/<page>/posts/<post_id>"
+```
 
 ## Deploy to Hugging Face Spaces (free)
 
@@ -184,6 +194,8 @@ Free Spaces sleep when idle and lose their disk on restart. Use
 
 ## Facebook limits
 
+- Inbox messages often land in the commenter's Messenger **Message requests** folder. Comments
+  posted as the Page itself are ignored, so test from a personal account.
 - A private reply can be sent **once per comment**, within **7 days** of the comment. If it
   fails, the public reply is kept and the error is recorded.
 - Fast or identical replies look like spam. The random delay and multiple templates help.

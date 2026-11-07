@@ -20,7 +20,7 @@ from fastapi.responses import PlainTextResponse
 
 from .ai import ClaudeResponder
 from .config import Settings
-from .facebook import GraphClient, verify_signature
+from .facebook import FacebookError, GraphClient, parse_post_ref, verify_signature
 from .processor import Generate, Graph, Processor, extract_comment_events
 from .rules import RuleSet
 from .store import Store, make_store
@@ -134,6 +134,26 @@ def create_app(
     @app.get("/logs", dependencies=admin)
     async def logs(limit: int = 50) -> list[dict[str, Any]]:
         return await store.recent(max(1, min(limit, 200)))
+
+    @app.get("/posts", dependencies=admin)
+    async def posts(limit: int = 10) -> list[dict[str, Any]]:
+        """The Page's last `limit` posts (1-100), newest first."""
+        try:
+            return await graph.list_posts(settings.page_id, limit)
+        except FacebookError as e:
+            raise HTTPException(502, str(e)) from e
+
+    @app.get("/posts/find", dependencies=admin)
+    async def find_post(ref: str) -> dict[str, Any]:
+        """One post by id (`PAGEID_POSTID` or `POSTID`) or by its facebook.com URL."""
+        try:
+            post_id = parse_post_ref(ref, settings.page_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        try:
+            return await graph.get_post(post_id)
+        except FacebookError as e:
+            raise HTTPException(404, f"post {post_id} not found: {e}") from e
 
     @app.get("/debug/payloads", dependencies=admin)
     async def debug_payloads() -> list[dict[str, Any]]:

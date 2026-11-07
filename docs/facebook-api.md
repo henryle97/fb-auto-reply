@@ -1,7 +1,7 @@
 # Facebook API reference
 
-This page describes every Facebook (Meta Graph API) interaction the bot depends on, and the
-HTTP endpoints it exposes. Behaviour marked **verified** was observed against the live API
+This page describes every Facebook (Meta Graph API) interaction the bot depends on. The bot's
+own HTTP endpoints are in [endpoints.md](endpoints.md). Behaviour marked **verified** was observed against the live API
 on 2026-11-07. Everything else follows Meta's documentation, linked at the end.
 
 ## Versions
@@ -84,6 +84,19 @@ Response:
 Limits: **one** private reply per comment, within **7 days** of the comment. After that, the
 call fails. The bot keeps the public reply and records the error.
 
+Which text is sent:
+
+| Reply source | Inbox message |
+|---|---|
+| Keyword rule | The rule's `private_reply`. A rule without one sends no inbox message. |
+| Claude | Claude's `private_message`. Claude leaves it empty for thanks and compliments; the `default.private_reply` template from `rules.yaml` (in the commenter's language) is sent instead. |
+| Default (AI off) | `default.private_reply` |
+| Claude declined (spam) | Nothing, and no public reply either |
+
+`SEND_PRIVATE_REPLY=false` turns inbox messages off entirely. The message arrives in the
+commenter's Messenger, often under **Message requests** if they never chatted with the Page.
+The comment must come from a person: comments posted as the Page are ignored.
+
 ### Read a post's text
 
 Gives the AI context on what the comment is replying to:
@@ -96,7 +109,44 @@ GET /{post_id}?fields=message
 {"message": "New feature launch ...", "id": "100000000000001_300000000000003"}
 ```
 
-Failures are logged and ignored; the AI then answers without post context.
+Failures (including network timeouts) are logged and ignored; the AI then answers without
+post context.
+
+### List and look up posts (admin endpoints)
+
+Used by [`GET /posts` and `GET /posts/find`](endpoints.md#get-posts). Response shapes **verified** on v25.0.
+
+```http
+GET /{page_id}/posts?fields=id,message,created_time,permalink_url,status_type&limit={k}
+```
+
+```json
+{"data": [{"id": "100000000000001_300000000000003", "message": "New feature launch ...",
+           "created_time": "2026-09-04T03:07:29+0000",
+           "permalink_url": "https://www.facebook.com/100000000000009/posts/300000000000003",
+           "status_type": "shared_story"}],
+ "paging": {"cursors": {...}, "next": "https://graph.facebook.com/...&access_token=..."}}
+```
+
+`limit` is capped at 100. `message` is missing for posts without text (e.g. photo-only).
+The bot drops `paging` because `paging.next` contains the access token.
+
+```http
+GET /{page_id}_{post_id}?fields=id,message,created_time,permalink_url,status_type
+```
+
+Post lookup findings (**verified**):
+
+- A bare post id (`GET /300000000000003`) fails with `(#12) singular statuses API is
+  deprecated`. The id must be `{page_id}_{post_id}`, so the bot adds the Page id.
+- On pages using the new Pages experience, the number in `permalink_url`
+  (`facebook.com/<profile id>/posts/<post_id>`) is a different id from the Page id. Only the
+  `<post_id>` part is used.
+- `GET /?id=<post url>` does not resolve post URLs; it echoes the URL back as `id`.
+- A post that does not exist returns `(#10) Object does not exist, cannot be loaded due to
+  missing permission ...`.
+- `pfbid...` share links (e.g. `permalink.php?story_fbid=pfbid0...`, also seen in webhook
+  `post.permalink_url`) cannot be turned into a post id. Use `GET /posts` to find the post.
 
 ### Setup and diagnostics calls
 
@@ -203,45 +253,8 @@ Facebook changes something.
 
 ## Bot endpoints
 
-| Method | Path | Auth | Response |
-|---|---|---|---|
-| `GET` | `/` | none | `{"ok": true, "dry_run": false, "ai": true}` |
-| `GET` | `/webhook` | `hub.verify_token` | `hub.challenge` as text, or 403 |
-| `POST` | `/webhook` | `X-Hub-Signature-256` | `{"ok": true}`, or 401 |
-| `GET` | `/logs?limit=50` | `X-Admin-Token` | Recent comments, newest first (max 200) |
-| `POST` | `/reload-rules` | `X-Admin-Token` | `{"ok": true, "rules": 3}` |
-| `GET` | `/debug/payloads` | `X-Admin-Token` | `[{"received_at": 1794026898.1, "payload": {...}}]` |
-
-`X-Admin-Token` must equal `FB_VERIFY_TOKEN`. Otherwise the endpoint returns 403.
-
-A `/logs` row:
-
-```json
-{
-  "comment_id": "300000000000003_400000000000004",
-  "post_id": "100000000000001_300000000000003",
-  "from_id": "200000000000002",
-  "from_name": "Jane Doe",
-  "message": "Cool <3",
-  "source": "ai",
-  "public_reply": "Thank you so much!",
-  "private_reply": null,
-  "status": "replied",
-  "error": null,
-  "created_at": 1794026898.4
-}
-```
-
-| `status` | Meaning |
-|---|---|
-| `processing` | Claimed, waiting for the reply delay |
-| `replied` | Posted |
-| `dry_run` | Would have been posted (`DRY_RUN=true`) |
-| `skipped` | No reply: the AI judged it spam, or no rule and no default applied |
-| `error` | A Graph API or AI call failed, or the AI reply was rejected by the output checks; see `error` |
-| `cancelled` | The server stopped during the reply delay; nothing was posted |
-
-`source` is the rule name, `ai`, or `default`.
+Parameters, headers, responses and errors for every endpoint the bot serves:
+[endpoints.md](endpoints.md).
 
 ## Sources
 

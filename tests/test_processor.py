@@ -84,6 +84,14 @@ async def test_ai_fallback(make_processor):
     assert graph.calls == [("public", "c1", "AI public"), ("private", "c1", "AI private")]
 
 
+async def test_ai_without_private_uses_default_inbox_message(make_processor):
+    p, graph, store, _ = make_processor(FakeAI(Reply("Thanks!", "", "ai")))
+    await p.handle(event("Cool, thanks"))
+    inbox = "Hi Jane! How can we help?"
+    assert graph.calls == [("public", "c1", "Thanks!"), ("private", "c1", inbox)]
+    assert (await store.recent())[0]["private_reply"] == inbox
+
+
 async def test_ai_declines_spam(make_processor):
     p, graph, store, _ = make_processor(FakeAI(None))
     await p.handle(event("@Mike look at this"))

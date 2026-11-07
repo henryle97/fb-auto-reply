@@ -68,6 +68,15 @@ class FakeGraph:
     async def get_post_text(self, post_id: str) -> str:
         return "New feature launch"
 
+    async def list_posts(self, page_id: str, limit: int) -> list[dict[str, Any]]:
+        posts = [{"id": f"{page_id}_{n}", "message": f"post {n}"} for n in range(3, 0, -1)]
+        return posts[:limit]
+
+    async def get_post(self, post_id: str) -> dict[str, Any]:
+        if not post_id.endswith("_3"):
+            raise FacebookError(f"GET {post_id} -> 400: Object does not exist")
+        return {"id": post_id, "message": "post 3"}
+
 
 class FakeAI:
     def __init__(self, result: Reply | Exception | None = None):

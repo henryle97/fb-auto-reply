@@ -24,6 +24,8 @@ class Graph(Protocol):
     async def reply_comment(self, comment_id: str, message: str) -> dict[str, Any]: ...
     async def private_reply(self, page_id: str, comment_id: str, message: str) -> Any: ...
     async def get_post_text(self, post_id: str) -> str: ...
+    async def list_posts(self, page_id: str, limit: int) -> list[dict[str, Any]]: ...
+    async def get_post(self, post_id: str) -> dict[str, Any]: ...
 
 
 @dataclass
@@ -90,7 +92,15 @@ class Processor:
             post_text = await self.graph.get_post_text(ev.post_id) if ev.post_id else ""
             # None means the model declined (spam etc.): do not fall back to the default.
             # AIError propagates and is recorded as status=error.
-            return await self.generate(ev.message, ev.from_name, post_text)
+            reply = await self.generate(ev.message, ev.from_name, post_text)
+            if reply and not reply.private:
+                # The model leaves private_message empty for thanks/compliments. Every
+                # commenter the bot answers still gets an inbox message: use the default
+                # rule's private_reply template (in the commenter's language) when there is one.
+                default = self.rules.default_reply(ev.message, ev.from_name)
+                if default and default.private:
+                    reply.private = default.private
+            return reply
         return self.rules.default_reply(ev.message, ev.from_name)
 
     async def handle(self, ev: CommentEvent) -> None:

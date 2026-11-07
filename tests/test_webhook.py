@@ -48,3 +48,20 @@ def test_admin_endpoints_need_token(settings):
         assert client.get("/logs", headers={"X-Admin-Token": "vt"}).status_code == 200
         r = client.post("/reload-rules", headers={"X-Admin-Token": "vt"})
         assert r.json() == {"ok": True, "rules": 3}
+
+
+def test_posts_endpoints(settings):
+    headers = {"X-Admin-Token": "vt"}
+    page = settings.page_id
+    with make_client(settings) as client:
+        assert client.get("/posts").status_code == 403
+        r = client.get("/posts", params={"limit": 2}, headers=headers)
+        assert [p["id"] for p in r.json()] == [f"{page}_3", f"{page}_2"]
+
+        url = "https://www.facebook.com/122131032267466171/posts/3?substory_index=3"
+        for ref in (f"{page}_3", "3", url):
+            r = client.get("/posts/find", params={"ref": ref}, headers=headers)
+            assert r.status_code == 200 and r.json()["id"] == f"{page}_3", ref
+        assert client.get("/posts/find", params={"ref": "9"}, headers=headers).status_code == 404
+        bad = client.get("/posts/find", params={"ref": "hello"}, headers=headers)
+        assert bad.status_code == 400
