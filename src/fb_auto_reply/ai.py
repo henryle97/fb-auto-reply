@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import anthropic
 
@@ -58,39 +58,73 @@ OUTPUT_SCHEMA = {
 # Hard limits on what the bot will post, whatever the model returns.
 MAX_PUBLIC_CHARS = 500
 MAX_PRIVATE_CHARS = 2000
-# Full URLs, plus bare domains with or without a path ("evil.test", "evil.test/x").
-# Labels and TLDs accept any Unicode letters so internationalized domains are caught too.
-_URL = re.compile(
-    r"(?:https?://|www\.)[^\s<>()\"']+|(?<![\w.-])(?:[\w-]+\.)+[^\W\d_][\w-]+(?:[/?#:]\S*)?",
-    re.I,
-)
 # Domain-shaped tokens that are really file names ("lesson.html"). Only extensions that are
 # not delegated TLDs belong here (".zip", ".md", ".app" etc. are real TLDs).
 _FILE_SUFFIXES = {"html", "htm", "pdf", "png", "jpg", "jpeg", "gif", "txt", "csv"}
+# Unicode full stops that browsers and linkifiers treat as "." in domain names.
+_DOTS = str.maketrans(
+    {
+        "\N{IDEOGRAPHIC FULL STOP}": ".",
+        "\N{FULLWIDTH FULL STOP}": ".",
+        "\N{HALFWIDTH IDEOGRAPHIC FULL STOP}": ".",
+    }
+)
+_SCHEME = re.compile(r"https?://", re.I)
 
 
 class AIError(Exception):
     """Calling Claude failed (as opposed to the model deciding not to reply)."""
 
 
-def _host(url: str) -> str | None:
-    """Lowercased host, or None when the authority is ambiguous between parsers.
+def link_candidates(text: str) -> list[tuple[str, str | None]]:
+    """Every token that a linkifier could turn into a link, with its host.
 
-    Browsers treat "\\" like "/" and "@" as a userinfo separator, so URLs such as
-    "https://evil.test\\@good.example" can resolve to a different host than urlsplit
-    reports. Anything beyond a plain host[:port] is rejected.
+    Fail-closed: the text is NFKC-normalized, split on whitespace and brackets, and any
+    token with a dot followed by a label starting with a letter counts as a candidate
+    ("evil.test", "see...evil.test/x", "пример.рф"). The host is None when the token
+    is ambiguous between parsers ("\\", "@", "%", control characters in the authority),
+    so it can never match the allowlist.
     """
-    url = url.rstrip(".,!?;:")
-    if not re.match(r"https?://", url, re.I):
-        url = "http://" + url
-    authority = re.split(r"[/?#]", url.split("://", 1)[1], maxsplit=1)[0]
-    if re.search(r"[@\\%\s\x00-\x1f\x7f]", authority):
-        return None
-    host = (urlsplit(url).hostname or "").lower().removeprefix("www.")
-    return host or None
+    text = unicodedata.normalize("NFKC", text).translate(_DOTS)
+    found = []
+    for raw in re.split(r"[\s<>()\[\]{}\"'`,]+", text):
+        for token in re.split(r"\.{2,}", raw):  # "see...evil.test" -> "see", "evil.test"
+            token = token.strip(".,!?;:*_~|")
+            body = _SCHEME.sub("", token, count=1)
+            if _SCHEME.match(token) is None and "." not in body:
+                continue
+            authority = re.split(r"[/?#]", body, maxsplit=1)[0]
+            if "@" in authority and not _SCHEME.match(token) and authority.count("@") == 1:
+                authority = authority.split("@", 1)[1]  # an email address: check its domain
+                ambiguous = False
+            else:
+                ambiguous = bool(re.search(r"[@\\%\x00-\x1f\x7f]", authority))
+            host = authority.rsplit(":", 1)[0] if ":" in authority else authority
+            host = host.lower().removeprefix("www.")
+            labels = host.split(".")
+            tld = labels[-1]
+            looks_like_domain = len(labels) > 1 and len(tld) >= 2 and tld[0].isalpha()
+            if not (_SCHEME.match(token) or looks_like_domain):
+                continue
+            if any(not label for label in labels):
+                ambiguous = True
+            found.append((token, None if ambiguous or not host else host))
+    return found
 
 
-def check_reply(text: str | None, limit: int, allowed_hosts: set[str], field: str) -> str | None:
+def _is_file_name(token: str, host: str) -> bool:
+    return (
+        not re.match(r"(?:https?://|www\.)", token, re.I)
+        and not re.search(r"[/?#:@]", token)
+        and host.rsplit(".", 1)[-1] in _FILE_SUFFIXES
+    )
+
+
+def allowed_hosts(product_info: str) -> set[str]:
+    return {h for _, h in link_candidates(product_info) if h}
+
+
+def check_reply(text: str | None, limit: int, allowed: set[str], field: str) -> str | None:
     """Reject AI output that is too long or links anywhere product_info does not mention.
 
     The comment is untrusted input, so a successful prompt injection must not be able to
@@ -101,16 +135,10 @@ def check_reply(text: str | None, limit: int, allowed_hosts: set[str], field: st
         return None
     if len(text) > limit:
         raise AIError(f"AI {field} too long ({len(text)} > {limit} chars), not posted")
-    for url in _URL.findall(text):
-        host = _host(url)
+    for token, host in link_candidates(text):
         if host is None:
-            raise AIError(f"AI {field} contains an ambiguous URL {url[:80]!r}, not posted")
-        is_file = (
-            not re.match(r"(?:https?://|www\.)", url, re.I)
-            and not re.search(r"[/?#:]", url)
-            and host.rsplit(".", 1)[-1] in _FILE_SUFFIXES
-        )
-        if host not in allowed_hosts and not is_file:
+            raise AIError(f"AI {field} contains an ambiguous link {token[:80]!r}, not posted")
+        if host not in allowed and not _is_file_name(token, host):
             raise AIError(f"AI {field} links to {host!r}, not in product info, not posted")
     return text
 
@@ -185,7 +213,7 @@ class ClaudeResponder:
 
         if not data.get("should_reply"):
             return None
-        hosts = {h for u in _URL.findall(self.product_info()) if (h := _host(u))}
+        hosts = allowed_hosts(self.product_info())
         return Reply(
             public=check_reply(data.get("public_reply"), MAX_PUBLIC_CHARS, hosts, "public_reply"),
             private=check_reply(

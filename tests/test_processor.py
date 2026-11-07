@@ -137,6 +137,7 @@ def test_ai_output_checks():
     assert check_reply("See https://example.com/pricing", 500, hosts, "f") is not None
     assert check_reply("Try www.example.com/x or example.com/y", 500, hosts, "f")
     assert check_reply("Sign up at https://example.com.", 500, hosts, "f")
+    assert check_reply("Write to help@example.com (e.g. today)...", 500, hosts, "f")
     assert check_reply("  ", 500, hosts, "f") is None
     assert check_reply("Download lesson.html, e.g. on a phone. Costs 1.5 gold.", 500, hosts, "f")
     bad_replies = [
@@ -150,6 +151,12 @@ def test_ai_output_checks():
         "visit evil.xn--p1ai",
         "get evil.zip or notes.md",
         "www.lesson.html",
+        "see...evil.test/x",
+        ".evil.test",
+        "evil\N{IDEOGRAPHIC FULL STOP}test",
+        "evil\N{FULLWIDTH FULL STOP}test/x",
+        "visit cafe\u0301.te\u0301st",
+        "mail me@evil.test",
         "visit пример.рф",
         "x" * 501,
     ]
