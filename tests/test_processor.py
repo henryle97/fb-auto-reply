@@ -138,6 +138,14 @@ def test_ai_output_checks():
     assert check_reply("Try www.example.com/x or example.com/y", 500, hosts, "f")
     assert check_reply("Sign up at https://example.com.", 500, hosts, "f")
     assert check_reply("  ", 500, hosts, "f") is None
-    for bad in ["Win at https://evil.test/x", "go to evil.test/login", "x" * 501]:
+    assert check_reply("Download lesson.html, e.g. on a phone. Costs 1.5 gold.", 500, hosts, "f")
+    bad_replies = [
+        "Win at https://evil.test/x",
+        "go to evil.test/login",
+        "visit evil.test now",
+        "see sub.evil.test.",
+        "x" * 501,
+    ]
+    for bad in bad_replies:
         with pytest.raises(AIError):
             check_reply(bad, 500, hosts, "f")

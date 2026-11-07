@@ -58,9 +58,12 @@ OUTPUT_SCHEMA = {
 # Hard limits on what the bot will post, whatever the model returns.
 MAX_PUBLIC_CHARS = 500
 MAX_PRIVATE_CHARS = 2000
+# Full URLs, plus bare domains with or without a path ("evil.test", "evil.test/x").
 _URL = re.compile(
-    r"(?:https?://|www\.)[^\s<>()\"']+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/\S*", re.I
+    r"(?:https?://|www\.)[^\s<>()\"']+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b(?:[/?#]\S*)?", re.I
 )
+# Domain-shaped tokens that are really file names ("lesson.html").
+_FILE_SUFFIXES = {"html", "htm", "pdf", "png", "jpg", "jpeg", "gif", "txt", "md", "csv", "zip"}
 
 
 class AIError(Exception):
@@ -86,8 +89,10 @@ def check_reply(text: str | None, limit: int, allowed_hosts: set[str], field: st
     if len(text) > limit:
         raise AIError(f"AI {field} too long ({len(text)} > {limit} chars), not posted")
     for url in _URL.findall(text):
-        if _host(url) not in allowed_hosts:
-            raise AIError(f"AI {field} links to {_host(url)!r}, not in product info, not posted")
+        host = _host(url)
+        is_file = "/" not in url and host.rsplit(".", 1)[-1] in _FILE_SUFFIXES
+        if host not in allowed_hosts and not is_file:
+            raise AIError(f"AI {field} links to {host!r}, not in product info, not posted")
     return text
 
 
